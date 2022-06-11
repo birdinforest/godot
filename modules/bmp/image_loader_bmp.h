@@ -64,7 +64,7 @@ protected:
 		struct bmp_info_header_s {
 			uint32_t bmp_header_size = 0;
 			uint32_t bmp_width = 0;
-			uint32_t bmp_height = 0;
+			int32_t bmp_height = 0;
 			uint16_t bmp_planes = 0;
 			uint16_t bmp_bit_count = 0;
 			uint32_t bmp_compression = 0;
@@ -73,6 +73,7 @@ protected:
 			uint32_t bmp_pixels_per_meter_y = 0;
 			uint32_t bmp_colors_used = 0;
 			uint32_t bmp_important_colors = 0;
+			bool bmp_bottom_up = true;
 		} bmp_info_header;
 	};
 

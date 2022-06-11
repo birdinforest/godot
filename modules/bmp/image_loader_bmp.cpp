@@ -32,6 +32,9 @@
 
 #include "core/io/file_access_memory.h"
 
+#include <iostream>
+#include <bitset>
+
 Error ImageLoaderBMP::convert_to_image(Ref<Image> p_image,
 		const uint8_t *p_buffer,
 		const uint8_t *p_color_buffer,
@@ -44,19 +47,22 @@ Error ImageLoaderBMP::convert_to_image(Ref<Image> p_image,
 	}
 
 	if (err == OK) {
-		size_t index = 0;
 		size_t width = (size_t)p_header.bmp_info_header.bmp_width;
 		size_t height = (size_t)p_header.bmp_info_header.bmp_height;
 		size_t bits_per_pixel = (size_t)p_header.bmp_info_header.bmp_bit_count;
 
+		size_t index = p_header.bmp_info_header.bmp_bottom_up ? 0 : width * height * bits_per_pixel;
+
+		std::cout << "convert_to_image height " << height << std::endl;
+
 		// Check whether we can load it
 
 		if (bits_per_pixel == 1) {
-			// Requires bit unpacking...
-			ERR_FAIL_COND_V_MSG(width % 8 != 0, ERR_UNAVAILABLE,
-					vformat("1-bpp BMP images must have a width that is a multiple of 8, but the imported BMP is %d pixels wide.", int(width)));
-			ERR_FAIL_COND_V_MSG(height % 8 != 0, ERR_UNAVAILABLE,
-					vformat("1-bpp BMP images must have a height that is a multiple of 8, but the imported BMP is %d pixels tall.", int(height)));
+//			// Requires bit unpacking...
+//			ERR_FAIL_COND_V_MSG(width % 8 != 0, ERR_UNAVAILABLE,
+//					vformat("1-bpp BMP images must have a width that is a multiple of 8, but the imported BMP is %d pixels wide.", int(width)));
+//			ERR_FAIL_COND_V_MSG(height % 8 != 0, ERR_UNAVAILABLE,
+//					vformat("1-bpp BMP images must have a height that is a multiple of 8, but the imported BMP is %d pixels tall.", int(height)));
 
 		} else if (bits_per_pixel == 4) {
 			// Requires bit unpacking...
@@ -84,7 +90,7 @@ Error ImageLoaderBMP::convert_to_image(Ref<Image> p_image,
 		uint8_t *data_w = data.ptrw();
 		uint8_t *write_buffer = data_w;
 
-		const uint32_t width_bytes = width * bits_per_pixel / 8;
+		const uint32_t width_bytes = Math::abs(static_cast<float>((bits_per_pixel * width + 31) / 32)) * 4; // width * bits_per_pixel / 8;
 		const uint32_t line_width = (width_bytes + 3) & ~3;
 
 		// The actual data traversal is determined by
@@ -93,65 +99,185 @@ Error ImageLoaderBMP::convert_to_image(Ref<Image> p_image,
 		const uint8_t *line = p_buffer + (line_width * (height - 1));
 		const uint8_t *end_buffer = p_buffer + p_header.bmp_file_header.bmp_file_size - p_header.bmp_file_header.bmp_file_offset;
 
-		for (uint64_t i = 0; i < height; i++) {
-			const uint8_t *line_ptr = line;
+		bool is_bottom_up = p_header.bmp_info_header.bmp_bottom_up;
 
-			for (unsigned int j = 0; j < w; j++) {
-				ERR_FAIL_COND_V(line_ptr >= end_buffer, ERR_FILE_CORRUPT);
-				switch (bits_per_pixel) {
-					case 1: {
-						uint8_t color_index = *line_ptr;
+//		if (is_bottom_up) {
+//			const uint8_t *buffer_ptr = p_buffer;
+//
+//			uint64_t index = 0;
+//
+//			uint8_t color_byte = *buffer_ptr;
+//			std::bitset<8> bi(color_byte);
+//			std::cout << bi << ' ' << std::hex << static_cast<int>(color_byte) << '\n';
+//
+//			uint64_t row_size = Math::abs(static_cast<float>((bits_per_pixel * width + 31) / 32)) * 4;
+//			uint64_t line_step = 0;
+//
+//			while (index < data_len) {
+//
+//				ERR_FAIL_COND_V(buffer_ptr >= end_buffer, ERR_FILE_CORRUPT);
+//				switch (bits_per_pixel) {
+//					case 1: {
+//
+//						uint8_t color_index = *buffer_ptr;
+//
+////						int bitStep = data_len - index >= 8 ? 8 : data_len - index;
+//
+//						int bit_step = width - line_step >= 8 ? 7 : width - line_step;
+//
+//						if(bit_step > 0) {
+//							for (int i = 7; i >= 7 - bit_step; --i) {
+//								write_buffer[index] = (color_index >> i) & 1;
+//
+//
+//								index += 1;
+//								line_step += 1;
+//
+//								std::cout << static_cast<int>(write_buffer[index - 1]) << " ";
+//							}
+//
+//							std::cout << std::endl;
+//						}
+//
+//						if(bit_step < 7) {
+//							line_step = 0;
+//						}
+//
+//						// Next byte
+//						buffer_ptr += 1;
+//						uint8_t color_byte = *buffer_ptr;
+//						std::bitset<8> bi(color_byte);
+//						std::cout << bi << ' ' << std::hex << static_cast<int>(color_byte) << '\n';
+//
+//					} break;
+//				}
+//			}
+//		}
 
-						write_buffer[index + 0] = (color_index >> 7) & 1;
-						write_buffer[index + 1] = (color_index >> 6) & 1;
-						write_buffer[index + 2] = (color_index >> 5) & 1;
-						write_buffer[index + 3] = (color_index >> 4) & 1;
-						write_buffer[index + 4] = (color_index >> 3) & 1;
-						write_buffer[index + 5] = (color_index >> 2) & 1;
-						write_buffer[index + 6] = (color_index >> 1) & 1;
-						write_buffer[index + 7] = (color_index >> 0) & 1;
+		if (is_bottom_up) {
+			for (uint64_t i = 0; i < height; i++) {
+				const uint8_t *line_ptr = line;
 
-						index += 8;
-						line_ptr += 1;
-					} break;
-					case 4: {
-						uint8_t color_index = *line_ptr;
+				uint64_t line_step = 0;
+				for (unsigned int j = 0; j < w; j++) {
+					ERR_FAIL_COND_V(line_ptr >= end_buffer, ERR_FILE_CORRUPT);
+					switch (bits_per_pixel) {
+						case 1: {
 
-						write_buffer[index + 0] = (color_index >> 4) & 0x0f;
-						write_buffer[index + 1] = color_index & 0x0f;
+							// This line has been filled.
+							if(line_step == width) {
+								continue;
+							}
 
-						index += 2;
-						line_ptr += 1;
-					} break;
-					case 8: {
-						uint8_t color_index = *line_ptr;
+							std::cout << "h: " << static_cast<int>(i) << "w: " << j << " " << std::endl;
 
-						write_buffer[index] = color_index;
+							uint8_t color_index = *line_ptr;
 
-						index += 1;
-						line_ptr += 1;
-					} break;
-					case 24: {
-						write_buffer[index + 2] = line_ptr[0];
-						write_buffer[index + 1] = line_ptr[1];
-						write_buffer[index + 0] = line_ptr[2];
-						write_buffer[index + 3] = 0xff;
+							std::bitset<8> bi(color_index);
+							std::cout << bi << ' ' << std::hex << static_cast<int>(color_index) << '\n';
 
-						index += 4;
-						line_ptr += 3;
-					} break;
-					case 32: {
-						write_buffer[index + 2] = line_ptr[0];
-						write_buffer[index + 1] = line_ptr[1];
-						write_buffer[index + 0] = line_ptr[2];
-						write_buffer[index + 3] = line_ptr[3];
+							int bit_shift_base = width - line_step >= 8 ? 7 : width - line_step - 1;
 
-						index += 4;
-						line_ptr += 4;
-					} break;
+							if(bit_shift_base > 0) {
+								for (int i = 7; i >= 7 - bit_shift_base; --i) {
+									write_buffer[index] = (color_index >> i) & 1;
+
+									index += 1;
+									line_step += 1;
+
+									std::cout << static_cast<int>(write_buffer[index - 1]) << " ";
+								}
+
+								std::cout << std::endl;
+							}
+
+							line_ptr += 1;
+
+//							write_buffer[index + 0] = (color_index >> 7) & 1;
+//							write_buffer[index + 1] = (color_index >> 6) & 1;
+//							write_buffer[index + 2] = (color_index >> 5) & 1;
+//							write_buffer[index + 3] = (color_index >> 4) & 1;
+//							write_buffer[index + 4] = (color_index >> 3) & 1;
+//							write_buffer[index + 5] = (color_index >> 2) & 1;
+//							write_buffer[index + 6] = (color_index >> 1) & 1;
+//							write_buffer[index + 7] = (color_index >> 0) & 1;
+//
+//							index += 8;
+
+						} break;
+						case 4: {
+							uint8_t color_index = *line_ptr;
+
+							write_buffer[index + 0] = (color_index >> 4) & 0x0f;
+							write_buffer[index + 1] = color_index & 0x0f;
+
+							index += 2;
+							line_ptr += 1;
+						} break;
+						case 8: {
+							uint8_t color_index = *line_ptr;
+
+							write_buffer[index] = color_index;
+
+							index += 1;
+							line_ptr += 1;
+						} break;
+						case 24: {
+							write_buffer[index + 2] = line_ptr[0];
+							write_buffer[index + 1] = line_ptr[1];
+							write_buffer[index + 0] = line_ptr[2];
+							write_buffer[index + 3] = 0xff;
+
+							index += 4;
+							line_ptr += 3;
+						} break;
+						case 32: {
+							write_buffer[index + 2] = line_ptr[0];
+							write_buffer[index + 1] = line_ptr[1];
+							write_buffer[index + 0] = line_ptr[2];
+							write_buffer[index + 3] = line_ptr[3];
+
+							index += 4;
+							line_ptr += 4;
+						} break;
+					}
 				}
+				line -= line_width;
 			}
-			line -= line_width;
+		} else {
+			for (uint64_t i = 0; i < height; i++) {
+				const uint8_t *line_ptr = line;
+
+				std::cout << "height " << i << std::endl;
+
+				for (unsigned int j = 0; j < w; j++) {
+					ERR_FAIL_COND_V(line_ptr >= end_buffer, ERR_FILE_CORRUPT);
+
+					std::cout << "w " << w << std::endl;
+
+					switch (bits_per_pixel) {
+						case 1:
+						case 4:
+						case 8:
+						case 24:
+							break;
+						case 32: {
+							size_t pixel_bytes = bits_per_pixel / 8;
+							size_t index_reverse = ((height - i - 1) * w + j) * pixel_bytes;
+							write_buffer[index_reverse + 2] = line_ptr[0];
+							write_buffer[index_reverse + 1] = line_ptr[1];
+							write_buffer[index_reverse + 0] = line_ptr[2];
+							write_buffer[index_reverse + 3] = line_ptr[3];
+
+							std::cout << "index_in_row " << j << std::endl;
+							std::cout << "index_reverse " << index_reverse << std::endl;
+
+							line_ptr += 4;
+						} break;
+					}
+				}
+				line -= line_width;
+			}
 		}
 
 		if (p_color_buffer == nullptr || color_table_size == 0) { // regular pixels
@@ -234,6 +360,15 @@ Error ImageLoaderBMP::load_image(Ref<Image> p_image, Ref<FileAccess> f, bool p_f
 			bmp_header.bmp_info_header.bmp_colors_used = f->get_32();
 			bmp_header.bmp_info_header.bmp_important_colors = f->get_32();
 
+			std::cout << "load_image bmp_header height uint32_t" << bmp_header.bmp_info_header.bmp_height << std::endl;
+
+			if (bmp_header.bmp_info_header.bmp_height < 0) {
+				bmp_header.bmp_info_header.bmp_height *= -1;
+				bmp_header.bmp_info_header.bmp_bottom_up = false;
+			}
+
+			std::cout << "load_image bmp_header height uint32_t" << bmp_header.bmp_info_header.bmp_height << std::endl;
+
 			switch (bmp_header.bmp_info_header.bmp_compression) {
 				case BI_RLE8:
 				case BI_RLE4:
@@ -268,7 +403,8 @@ Error ImageLoaderBMP::load_image(Ref<Image> p_image, Ref<FileAccess> f, bool p_f
 
 			f->seek(bmp_header.bmp_file_header.bmp_file_offset);
 
-			uint32_t bmp_buffer_size = (bmp_header.bmp_file_header.bmp_file_size - bmp_header.bmp_file_header.bmp_file_offset);
+			uint32_t bmp_buffer_size = (bmp_header.bmp_file_header.bmp_file_size -
+					bmp_header.bmp_file_header.bmp_file_offset);
 
 			Vector<uint8_t> bmp_buffer;
 			err = bmp_buffer.resize(bmp_buffer_size);
